@@ -377,6 +377,21 @@
         display: block;
       }
 
+      .admin-settings {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .admin-settings label {
+        display: grid;
+        gap: 6px;
+        color: #fff8ea;
+        font-size: 0.9rem;
+        font-weight: 900;
+      }
+
       .hint {
         margin-top: 10px;
         color: #c75f5f;
@@ -438,6 +453,10 @@
           padding: 9px 11px;
           font-size: 0.88rem;
         }
+
+        .admin-settings {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -458,8 +477,8 @@
           </div>
         </div>
         <div class="header-actions">
-          <a href="https://open.kakao.com/o/sN75LBYg" target="_blank" rel="noopener noreferrer">1:1 오픈톡</a>
-          <a href="https://open.kakao.com/o/gUVp9cwh" target="_blank" rel="noopener noreferrer">단톡방 입장</a>
+          <a id="kakaoOneTop" href="www.naver.com" target="_blank" rel="noopener noreferrer">1:1 오픈톡</a>
+          <a id="kakaoGroupTop" href="www.naver.com" target="_blank" rel="noopener noreferrer">단톡방 입장</a>
         </div>
         <div class="meta">
           <span class="chip" id="today"></span>
@@ -468,13 +487,13 @@
         </div>
       </section>
 
-      <div class="notice">💎𝐓𝐡𝐞 𝐁𝐥𝐚𝐜𝐤 𝐒𝐡𝐨𝐩💎</div>
+      <div id="noticeText" class="notice">테스트버전입니다.</div>
       <section class="price-list" id="priceList"></section>
     </main>
 
     <div class="contact">
-      <a href="https://open.kakao.com/o/sN75LBYg" target="_blank" rel="noopener noreferrer">1:1 톡</a>
-      <a href="https://open.kakao.com/o/gUVp9cwh" target="_blank" rel="noopener noreferrer">단톡방</a>
+      <a id="kakaoOneFloat" href="www.naver.com" target="_blank" rel="noopener noreferrer">1:1 톡</a>
+      <a id="kakaoGroupFloat" href="www.naver.com" target="_blank" rel="noopener noreferrer">단톡방</a>
     </div>
 
     <div class="modal-backdrop" id="adminModal">
@@ -492,6 +511,20 @@
         </div>
 
         <div class="admin-panel" id="adminPanel">
+          <div class="admin-settings">
+            <label>
+              공지 문구
+              <input id="noticeEditor" type="text" />
+            </label>
+            <label>
+              1:1 오픈톡 링크
+              <input id="kakaoOneEditor" type="url" />
+            </label>
+            <label>
+              단톡방 링크
+              <input id="kakaoGroupEditor" type="url" />
+            </label>
+          </div>
           <textarea id="priceEditor" spellcheck="false"></textarea>
           <div class="modal-actions">
             <button id="previewButton" type="button">미리보기</button>
@@ -506,6 +539,12 @@
 
     <script>
       let serverSession = false;
+      const defaultSiteSettings = {
+        notice: "테스트버전입니다.",
+        kakaoOneUrl: "www.naver.com",
+        kakaoGroupUrl: "www.naver.com"
+      };
+      let siteSettings = { ...defaultSiteSettings };
       const priceList = document.querySelector("#priceList");
       const today = document.querySelector("#today");
       const talkingCount = document.querySelector("#talkingCount");
@@ -515,6 +554,9 @@
       const passwordInput = document.querySelector("#passwordInput");
       const loginHint = document.querySelector("#loginHint");
       const priceEditor = document.querySelector("#priceEditor");
+      const noticeEditor = document.querySelector("#noticeEditor");
+      const kakaoOneEditor = document.querySelector("#kakaoOneEditor");
+      const kakaoGroupEditor = document.querySelector("#kakaoGroupEditor");
       let originalText = "";
 
       today.textContent = new Intl.DateTimeFormat("ko-KR", {
@@ -528,8 +570,36 @@
       init();
 
       async function init() {
+        applySiteSettings({});
         originalText = await loadPriceText();
         renderPriceList(originalText);
+      }
+
+      function applySiteSettings(settings) {
+        siteSettings = {
+          ...defaultSiteSettings,
+          ...Object.fromEntries(
+            Object.entries(settings || {}).filter(([, value]) => typeof value === "string" && value.trim())
+          )
+        };
+
+        document.querySelector("#noticeText").textContent = siteSettings.notice;
+        document.querySelector("#kakaoOneTop").href = siteSettings.kakaoOneUrl;
+        document.querySelector("#kakaoOneFloat").href = siteSettings.kakaoOneUrl;
+        document.querySelector("#kakaoGroupTop").href = siteSettings.kakaoGroupUrl;
+        document.querySelector("#kakaoGroupFloat").href = siteSettings.kakaoGroupUrl;
+
+        if (noticeEditor) noticeEditor.value = siteSettings.notice;
+        if (kakaoOneEditor) kakaoOneEditor.value = siteSettings.kakaoOneUrl;
+        if (kakaoGroupEditor) kakaoGroupEditor.value = siteSettings.kakaoGroupUrl;
+      }
+
+      function readSiteSettingsFromEditor() {
+        return {
+          notice: noticeEditor.value.trim(),
+          kakaoOneUrl: kakaoOneEditor.value.trim(),
+          kakaoGroupUrl: kakaoGroupEditor.value.trim()
+        };
       }
 
       async function loadPriceText() {
@@ -537,6 +607,7 @@
           const savedResponse = await fetch("api/price", { cache: "no-store" });
           if (savedResponse.ok) {
             const savedData = await savedResponse.json();
+            if (savedData.settings) applySiteSettings(savedData.settings);
             if (savedData.text) return savedData.text;
           }
         } catch {}
@@ -657,6 +728,7 @@
 
       document.querySelector("#saveButton").addEventListener("click", async () => {
         const text = priceEditor.value;
+        const settings = readSiteSettingsFromEditor();
 
         if (!serverSession) {
           alert("로그인이 필요합니다.");
@@ -670,11 +742,12 @@
               "Content-Type": "application/json",
               Accept: "application/json"
             },
-            body: JSON.stringify({ text })
+            body: JSON.stringify({ text, settings })
           });
           if (!response.ok) {
             throw new Error("저장에 실패했습니다.");
           }
+          applySiteSettings(settings);
           originalText = text;
           renderPriceList(text);
           alert("저장했습니다.");
@@ -688,6 +761,10 @@
       });
 
       document.querySelector("#resetButton").addEventListener("click", () => {
+        applySiteSettings(defaultSiteSettings);
+        noticeEditor.value = defaultSiteSettings.notice;
+        kakaoOneEditor.value = defaultSiteSettings.kakaoOneUrl;
+        kakaoGroupEditor.value = defaultSiteSettings.kakaoGroupUrl;
         priceEditor.value = originalText;
         renderPriceList(originalText);
       });
@@ -719,6 +796,9 @@
         passwordPanel.style.display = "none";
         adminPanel.classList.add("open");
         priceEditor.value = originalText;
+        noticeEditor.value = siteSettings.notice;
+        kakaoOneEditor.value = siteSettings.kakaoOneUrl;
+        kakaoGroupEditor.value = siteSettings.kakaoGroupUrl;
       }
 
       function closeModal() {
